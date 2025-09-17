@@ -151,7 +151,7 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
           {remoteParticipants.map((p) => (
             <Card key={p.peerId} className="bg-video-bg border-video-border overflow-hidden">
               <div className="relative aspect-video">
-                <ParticipantVideo stream={p.stream} />
+                <ParticipantVideo stream={p.stream} videoEnabled={p.videoEnabled} />
                 {/* Mic status (remote) */}
                 <MicStatusOverlay enabled={p.audioEnabled} />
                 <div className="absolute bottom-4 left-4">
@@ -200,14 +200,26 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
   );
 }
 
-function ParticipantVideo({ stream }: { stream: MediaStream | null }) {
+function ParticipantVideo({ stream, videoEnabled }: { stream: MediaStream | null; videoEnabled?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (ref.current && stream) {
       ref.current.srcObject = stream;
     }
   }, [stream]);
-  return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover" />;
+  return (
+    <div className="w-full h-full">
+      <video ref={ref} autoPlay playsInline className="w-full h-full object-cover" />
+      {videoEnabled === false && (
+        <div className="absolute inset-0 bg-video-bg flex items-center justify-center">
+          <div className="text-center">
+            <VideoOff className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+            <p className="text-muted-foreground">Camera Off</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function MicStatusOverlay({ enabled }: { enabled: boolean }) {
