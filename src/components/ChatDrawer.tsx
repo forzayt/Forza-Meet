@@ -30,6 +30,8 @@ export default function ChatDrawer({ username, roomId }: ChatDrawerProps) {
   const [messageText, setMessageText] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const [hasUnread, setHasUnread] = useState(false);
+  const unreadTimerRef = useRef<number | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,7 +47,19 @@ export default function ChatDrawer({ username, roomId }: ChatDrawerProps) {
         timestamp: data.timestamp,
         isLocal: false,
       };
-      setMessages((prev) => [...prev, incoming]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) return prev; // avoid duplicates
+        return [...prev, incoming];
+      });
+      // Show unread dot for 3s if drawer is closed and message is from others
+      if (!isOpen && data.username !== username) {
+        setHasUnread(true);
+        if (unreadTimerRef.current) window.clearTimeout(unreadTimerRef.current);
+        unreadTimerRef.current = window.setTimeout(() => {
+          setHasUnread(false);
+          unreadTimerRef.current = null;
+        }, 3000);
+      }
     };
     channel.addEventListener("message", onMessage as EventListener);
     return () => {
@@ -86,14 +100,29 @@ export default function ChatDrawer({ username, roomId }: ChatDrawerProps) {
   };
 
   return (
-    <Drawer open={isOpen} onOpenChange={setIsOpen}>
+    <Drawer
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (open) {
+          setHasUnread(false);
+          if (unreadTimerRef.current) {
+            window.clearTimeout(unreadTimerRef.current);
+            unreadTimerRef.current = null;
+          }
+        }
+      }}
+    >
       <DrawerTrigger asChild>
         <Button
           variant="secondary"
           size="lg"
-          className="rounded-full w-14 h-14 p-0 bg-black/60 text-white shadow-lg hover:bg-black/80 transition-all duration-200"
+          className="relative rounded-full w-14 h-14 p-0 bg-black/60 text-white shadow-lg hover:bg-black/80 transition-all duration-200"
         >
           <MessageCircle className="w-6 h-6" />
+          {hasUnread && !isOpen && (
+            <span className="absolute -top-0.5 -right-0.5 inline-block w-3 h-3 rounded-full bg-red-500 ring-2 ring-black/60" />
+          )}
         </Button>
       </DrawerTrigger>
       
