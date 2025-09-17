@@ -128,19 +128,9 @@ export default function ChatDrawer({ username, roomId }: ChatDrawerProps) {
       
       <DrawerContent className="h-[85vh] bg-gradient-to-br from-primary/95 via-accent/95 to-primary/95 backdrop-blur-xl border-white/20">
         <DrawerHeader className="border-b border-white/10 bg-white/5">
-          <div className="flex items-center justify-between">
-            <DrawerTitle className="text-white text-xl font-semibold flex items-center gap-2">
-              <MessageCircle className="w-6 h-6" />
-              Chat
-            </DrawerTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsOpen(false)}
-              className="text-white/70 hover:text-white hover:bg-white/10 rounded-full p-2"
-            >
-              <X className="w-5 h-5" />
-            </Button>
+          
+          <div className="mt-2 flex items-center justify-center">
+            <p className="text-xs text-white/60">Drag down to close</p>
           </div>
         </DrawerHeader>
 
