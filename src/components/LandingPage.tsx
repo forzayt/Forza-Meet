@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Video, Users, ArrowRight } from "lucide-react";
+import { Video, Users, ArrowRight, Github } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface LandingPageProps {
@@ -88,6 +88,16 @@ export default function LandingPage({ onJoinRoom }: LandingPageProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-primary flex items-center justify-center p-4">
+      {/* Top-right GitHub link */}
+      <a
+        href="https://github.com/forzayt/Forza-Meet"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="GitHub repository"
+        className="fixed top-4 right-4 z-50 inline-flex items-center justify-center w-12 h-12 rounded-full bg-black/60 text-white shadow-lg hover:bg-black/80"
+      >
+        <Github className="w-6 h-6" />
+      </a>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 backdrop-blur rounded-2xl mb-4">
