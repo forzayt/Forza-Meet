@@ -81,8 +81,10 @@ export default function LandingPage({ onJoinRoom }: LandingPageProps) {
   const copyRoomId = async () => {
     try {
       await navigator.clipboard.writeText(createdRoomId);
+      toast({ title: "Copied", description: "Room ID copied to clipboard." });
     } catch (err) {
       console.error("Failed to copy room ID:", err);
+      toast({ title: "Copy failed", description: "Could not copy Room ID.", variant: "destructive" as any });
     }
   };
 
