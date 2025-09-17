@@ -1,27 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 
-interface SignalingData {
-  type: "offer" | "answer" | "ice-candidate";
-  username?: string;
-  offer?: RTCSessionDescriptionInit;
-  answer?: RTCSessionDescriptionInit;
-  candidate?: RTCIceCandidateInit;
+type SignalMessage =
+  | { type: "join"; senderId: string; username: string }
+  | { type: "leave"; senderId: string }
+  | { type: "offer"; senderId: string; targetId: string; sdp: RTCSessionDescriptionInit; username: string }
+  | { type: "answer"; senderId: string; targetId: string; sdp: RTCSessionDescriptionInit }
+  | { type: "ice-candidate"; senderId: string; targetId: string; candidate: RTCIceCandidateInit };
+
+interface RemoteParticipant {
+  peerId: string;
+  username: string;
+  stream: MediaStream | null;
 }
 
-export function useWebRTC(username: string, isCreator: boolean) {
+export function useWebRTC(username: string, roomId: string) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
-  const [remoteUsername, setRemoteUsername] = useState<string>("");
-  const [signalingData, setSignalingData] = useState<SignalingData | null>(null);
-  const [isSignalingComplete, setIsSignalingComplete] = useState(true);
 
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const clientId = useMemo(() => Math.random().toString(36).slice(2), []);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const remoteNamesRef = useRef<Map<string, string>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
-  const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
 
   const configuration: RTCConfiguration = {
     iceServers: [
@@ -34,50 +38,51 @@ export function useWebRTC(username: string, isCreator: boolean) {
     iceCandidatePoolSize: 10,
   };
 
-  const initializePeerConnection = useCallback(() => {
-    console.log("Initializing peer connection...");
-    const peerConnection = new RTCPeerConnection(configuration);
-    peerConnectionRef.current = peerConnection;
+  const createPeerConnection = useCallback((peerId: string) => {
+    const pc = new RTCPeerConnection(configuration);
+    peersRef.current.set(peerId, pc);
 
-    peerConnection.onicecandidate = (event) => {
-      console.log("ICE candidate generated:", event.candidate);
-      if (event.candidate) {
-        setSignalingData({
+    pc.onicecandidate = (event) => {
+      if (event.candidate && channelRef.current) {
+        const message: SignalMessage = {
           type: "ice-candidate",
+          senderId: clientId,
+          targetId: peerId,
           candidate: event.candidate.toJSON(),
+        };
+        channelRef.current.postMessage(message);
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const [stream] = event.streams;
+      if (stream) {
+        remoteStreamsRef.current.set(peerId, stream);
+        setRemoteParticipants((prev) => {
+          const name = remoteNamesRef.current.get(peerId) || "";
+          const exists = prev.some((p) => p.peerId === peerId);
+          const updated = exists
+            ? prev.map((p) => (p.peerId === peerId ? { ...p, stream } : p))
+            : [...prev, { peerId, username: name, stream }];
+          return updated;
         });
       }
     };
 
-    peerConnection.ontrack = (event) => {
-      console.log("Remote track received:", event.streams);
-      const [stream] = event.streams;
-      if (stream) {
-        setRemoteStream(stream);
-        remoteStreamRef.current = stream;
-        setRemoteUsername("Remote User");
-      }
+    pc.onconnectionstatechange = () => {
+      const states = Array.from(peersRef.current.values()).map((p) => p.connectionState);
+      if (states.some((s) => s === "connected")) setConnectionState("connected");
+      else if (states.some((s) => s === "connecting" || s === "new")) setConnectionState("connecting");
+      else setConnectionState("disconnected");
     };
 
-    peerConnection.oniceconnectionstatechange = () => {
-      console.log("ICE connection state:", peerConnection.iceConnectionState);
-    };
+    // Add local tracks to this connection
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, localStreamRef.current!));
+    }
 
-    peerConnection.onconnectionstatechange = () => {
-      const state = peerConnection.connectionState;
-      console.log("Connection state changed:", state);
-      
-      if (state === "connected") {
-        setConnectionState("connected");
-      } else if (state === "connecting") {
-        setConnectionState("connecting");
-      } else if (state === "disconnected" || state === "failed" || state === "closed") {
-        setConnectionState("disconnected");
-      }
-    };
-
-    return peerConnection;
-  }, []);
+    return pc;
+  }, [clientId]);
 
   const getLocalStream = useCallback(async () => {
     try {
@@ -107,116 +112,89 @@ export function useWebRTC(username: string, isCreator: boolean) {
 
   const startCall = useCallback(async () => {
     try {
-      console.log("Starting call as:", isCreator ? "Creator" : "Joiner");
       setConnectionState("connecting");
-      
       const stream = await getLocalStream();
-      const peerConnection = initializePeerConnection();
+      // Open signaling channel for this room
+      const channel = new BroadcastChannel(`forza-meet:${roomId}`);
+      channelRef.current = channel;
 
-      // Add local stream tracks to peer connection
-      stream.getTracks().forEach((track) => {
-        console.log("Adding track to peer connection:", track.kind);
-        peerConnection.addTrack(track, stream);
-      });
+      const handleMessage = async (event: MessageEvent<SignalMessage>) => {
+        const msg = event.data;
+        if (!msg || ("senderId" in msg && msg.senderId === clientId)) return;
 
-      // For demo purposes, let's create a simple local connection
-      if (isCreator) {
-        console.log("Creator: Creating offer");
-        const offer = await peerConnection.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true
-        });
-        await peerConnection.setLocalDescription(offer);
-        
-        // Simulate remote peer for demo
-        setTimeout(() => {
-          simulateRemotePeer(peerConnection, stream);
-        }, 1000);
-        
-        setSignalingData({
-          type: "offer",
-          username,
-          offer: offer,
-        });
-      } else {
-        // For joiners, we'll also simulate a connection
-        setTimeout(() => {
-          simulateRemotePeer(peerConnection, stream);
-        }, 1000);
-      }
+        switch (msg.type) {
+          case "join": {
+            // A new peer joined: create offer to them
+            remoteNamesRef.current.set(msg.senderId, msg.username);
+            setRemoteParticipants((prev) => {
+              if (prev.some((p) => p.peerId === msg.senderId)) return prev;
+              return [...prev, { peerId: msg.senderId, username: msg.username, stream: remoteStreamsRef.current.get(msg.senderId) || null }];
+            });
+            const pc = createPeerConnection(msg.senderId);
+            const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+            await pc.setLocalDescription(offer);
+            channel.postMessage({ type: "offer", senderId: clientId, targetId: msg.senderId, sdp: offer, username } as SignalMessage);
+            break;
+          }
+          case "offer": {
+            if (msg.targetId !== clientId) break;
+            remoteNamesRef.current.set(msg.senderId, msg.username);
+            setRemoteParticipants((prev) => {
+              if (prev.some((p) => p.peerId === msg.senderId)) return prev;
+              return [...prev, { peerId: msg.senderId, username: msg.username, stream: remoteStreamsRef.current.get(msg.senderId) || null }];
+            });
+            const pc = createPeerConnection(msg.senderId);
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            channel.postMessage({ type: "answer", senderId: clientId, targetId: msg.senderId, sdp: answer } as SignalMessage);
+            break;
+          }
+          case "answer": {
+            if (msg.targetId !== clientId) break;
+            const pc = peersRef.current.get(msg.senderId);
+            if (pc) {
+              await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            }
+            break;
+          }
+          case "ice-candidate": {
+            if (msg.targetId !== clientId) break;
+            const pc = peersRef.current.get(msg.senderId);
+            if (pc && msg.candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+              } catch (e) {
+                console.error("Error adding ICE candidate", e);
+              }
+            }
+            break;
+          }
+          case "leave": {
+            const pc = peersRef.current.get(msg.senderId);
+            if (pc) pc.close();
+            peersRef.current.delete(msg.senderId);
+            remoteStreamsRef.current.delete(msg.senderId);
+            remoteNamesRef.current.delete(msg.senderId);
+            setRemoteParticipants((prev) => prev.filter((p) => p.peerId !== msg.senderId));
+            break;
+          }
+        }
+      };
+
+      channel.addEventListener("message", handleMessage as EventListener);
+
+      // Announce presence
+      channel.postMessage({ type: "join", senderId: clientId, username } as SignalMessage);
+
+      // Cleanup listener on unmount/leave handled in hangUp
     } catch (error) {
       console.error("Error starting call:", error);
       setConnectionState("disconnected");
     }
-  }, [getLocalStream, initializePeerConnection, isCreator, username]);
+  }, [clientId, createPeerConnection, getLocalStream, roomId, username]);
 
-  // Simulate a remote peer for demo purposes (since we can't have real P2P without signaling server)
-  const simulateRemotePeer = useCallback(async (peerConnection: RTCPeerConnection, localStream: MediaStream) => {
-    try {
-      console.log("Simulating remote peer connection...");
-      
-      // Create a cloned stream for simulation
-      const clonedStream = localStream.clone();
-      
-      // Simulate receiving remote stream
-      setTimeout(() => {
-        console.log("Simulating remote stream received");
-        setRemoteStream(clonedStream);
-        setRemoteUsername("Demo User");
-        setConnectionState("connected");
-      }, 2000);
-      
-    } catch (error) {
-      console.error("Error in simulation:", error);
-    }
-  }, []);
-
-  const handleSignalingData = useCallback(async (data: SignalingData) => {
-    const peerConnection = peerConnectionRef.current;
-    if (!peerConnection) return;
-
-    try {
-      if (data.type === "offer" && !isCreator) {
-        // Joiner receives offer and creates answer
-        setRemoteUsername(data.username || "Remote User");
-        await peerConnection.setRemoteDescription(data.offer!);
-
-        // Process any queued ICE candidates
-        while (iceCandidatesQueue.current.length > 0) {
-          const candidate = iceCandidatesQueue.current.shift();
-          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate!));
-        }
-
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        setSignalingData({
-          type: "answer",
-          username,
-          answer: answer,
-        });
-      } else if (data.type === "answer" && isCreator) {
-        // Creator receives answer
-        setRemoteUsername(data.username || "Remote User");
-        await peerConnection.setRemoteDescription(data.answer!);
-
-        // Process any queued ICE candidates
-        while (iceCandidatesQueue.current.length > 0) {
-          const candidate = iceCandidatesQueue.current.shift();
-          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate!));
-        }
-      } else if (data.type === "ice-candidate") {
-        // Handle ICE candidates
-        if (peerConnection.remoteDescription) {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate!));
-        } else {
-          // Queue ICE candidates until remote description is set
-          iceCandidatesQueue.current.push(data.candidate!);
-        }
-      }
-    } catch (error) {
-      console.error("Error handling signaling data:", error);
-    }
-  }, [isCreator, username]);
+  // No external signaling handler needed; handled via BroadcastChannel
 
   const toggleAudio = useCallback(() => {
     if (localStreamRef.current) {
@@ -237,11 +215,16 @@ export function useWebRTC(username: string, isCreator: boolean) {
   }, []);
 
   const hangUp = useCallback(() => {
-    // Close peer connection
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
+    // Notify others
+    if (channelRef.current) {
+      channelRef.current.postMessage({ type: "leave", senderId: clientId } as SignalMessage);
+      channelRef.current.close();
+      channelRef.current = null;
     }
+
+    // Close all peer connections
+    peersRef.current.forEach((pc) => pc.close());
+    peersRef.current.clear();
 
     // Stop local stream
     if (localStreamRef.current) {
@@ -251,13 +234,11 @@ export function useWebRTC(username: string, isCreator: boolean) {
 
     // Reset state
     setLocalStream(null);
-    setRemoteStream(null);
+    setRemoteParticipants([]);
     setConnectionState("disconnected");
-    setRemoteUsername("");
-    setSignalingData(null);
-    setIsSignalingComplete(false);
-    iceCandidatesQueue.current = [];
-  }, []);
+    remoteStreamsRef.current.clear();
+    remoteNamesRef.current.clear();
+  }, [clientId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -268,13 +249,9 @@ export function useWebRTC(username: string, isCreator: boolean) {
 
   return {
     localStream,
-    remoteStream,
+    remoteParticipants,
     connectionState,
-    remoteUsername,
-    signalingData,
-    isSignalingComplete,
     startCall,
-    handleSignalingData,
     toggleAudio,
     toggleVideo,
     hangUp,

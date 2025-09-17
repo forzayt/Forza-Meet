@@ -18,29 +18,24 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 interface VideoRoomProps {
   username: string;
   roomId: string;
-  isCreator: boolean;
+  isCreator: boolean; // kept for compatibility with parent, not used here
   onLeaveRoom: () => void;
 }
 
-export default function VideoRoom({ username, roomId, isCreator, onLeaveRoom }: VideoRoomProps) {
+export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
 
   const {
     localStream,
-    remoteStream,
+    remoteParticipants,
     connectionState,
-    remoteUsername,
-    signalingData,
-    isSignalingComplete,
     startCall,
-    handleSignalingData,
     toggleAudio,
     toggleVideo,
     hangUp
-  } = useWebRTC(username, isCreator);
+  } = useWebRTC(username, roomId);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -48,25 +43,11 @@ export default function VideoRoom({ username, roomId, isCreator, onLeaveRoom }: 
     }
   }, [localStream]);
 
-  useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [remoteStream]);
+  // No single remote video ref; each participant manages its own video element
 
   useEffect(() => {
     startCall();
   }, [startCall]);
-
-  const copySignalingData = async () => {
-    if (signalingData) {
-      try {
-        await navigator.clipboard.writeText(JSON.stringify(signalingData));
-      } catch (err) {
-        console.error("Failed to copy signaling data:", err);
-      }
-    }
-  };
 
   const copyRoomId = async () => {
     try {
@@ -131,7 +112,7 @@ export default function VideoRoom({ username, roomId, isCreator, onLeaveRoom }: 
         </div>
 
         {/* Video Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
           {/* Local Video */}
           <Card className="bg-video-bg border-video-border overflow-hidden">
             <div className="relative aspect-video">
@@ -158,33 +139,19 @@ export default function VideoRoom({ username, roomId, isCreator, onLeaveRoom }: 
             </div>
           </Card>
 
-          {/* Remote Video */}
-          <Card className="bg-video-bg border-video-border overflow-hidden">
-            <div className="relative aspect-video">
-              {remoteStream ? (
-                <>
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute bottom-4 left-4">
-                    <Badge variant="secondary" className="bg-black/50 text-white border-0">
-                      {remoteUsername || "Remote User"}
-                    </Badge>
-                  </div>
-                </>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-video-bg">
-                  <div className="text-center">
-                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-muted-foreground">Waiting for participant...</p>
-                  </div>
+          {/* Remote Participants */}
+          {remoteParticipants.map((p) => (
+            <Card key={p.peerId} className="bg-video-bg border-video-border overflow-hidden">
+              <div className="relative aspect-video">
+                <ParticipantVideo stream={p.stream} />
+                <div className="absolute bottom-4 left-4">
+                  <Badge variant="secondary" className="bg-black/50 text-white border-0">
+                    {p.username || "Participant"}
+                  </Badge>
                 </div>
-              )}
-            </div>
-          </Card>
+              </div>
+            </Card>
+          ))}
         </div>
 
         {/* Controls */}
@@ -218,15 +185,23 @@ export default function VideoRoom({ username, roomId, isCreator, onLeaveRoom }: 
         </div>
 
         {/* Connection Status */}
-        {!remoteStream && connectionState !== "connected" && (
+        {remoteParticipants.length === 0 && connectionState !== "connected" && (
           <Card className="bg-white/10 backdrop-blur border-white/20 text-white p-4 text-center">
             <h3 className="font-semibold mb-2">Setting up connection...</h3>
-            <p className="text-sm text-white/70">
-              {isCreator ? "Waiting for someone to join the room" : "Connecting to the room creator"}
-            </p>
+            <p className="text-sm text-white/70">Share the Room ID to invite others</p>
           </Card>
         )}
       </div>
     </div>
   );
+}
+
+function ParticipantVideo({ stream }: { stream: MediaStream | null }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (ref.current && stream) {
+      ref.current.srcObject = stream;
+    }
+  }, [stream]);
+  return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover" />;
 }
