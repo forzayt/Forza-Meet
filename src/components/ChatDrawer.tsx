@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,69 +16,59 @@ interface Message {
   id: string;
   username: string;
   text: string;
-  timestamp: Date;
+  timestamp: number; // epoch ms
   isLocal: boolean;
 }
 
 interface ChatDrawerProps {
   username: string;
-  onSendMessage?: (message: string) => void;
-  messages?: Message[];
+  roomId: string;
 }
 
-export default function ChatDrawer({ username, onSendMessage, messages = [] }: ChatDrawerProps) {
+export default function ChatDrawer({ username, roomId }: ChatDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messageText, setMessageText] = useState("");
-  const [localMessages, setLocalMessages] = useState<Message[]>([
-    // Demo messages to show the design
-    {
-      id: "1",
-      username: "Alice",
-      text: "Hey everyone! Ready for the meeting?",
-      timestamp: new Date(Date.now() - 120000),
-      isLocal: false,
-    },
-    {
-      id: "2", 
-      username: username,
-      text: "Yes, let's get started!",
-      timestamp: new Date(Date.now() - 60000),
-      isLocal: true,
-    },
-    {
-      id: "3",
-      username: "Bob",
-      text: "Can everyone see my screen share?",
-      timestamp: new Date(Date.now() - 30000),
-      isLocal: false,
-    }
-  ]);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  const allMessages = messages.length > 0 ? messages : localMessages;
+  const [messages, setMessages] = useState<Message[]>([]);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    const channel = new BroadcastChannel(`forza-meet:${roomId}:chat`);
+    channelRef.current = channel;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as any;
+      if (!data || data.type !== "chat") return;
+      const incoming: Message = {
+        id: data.id,
+        username: data.username,
+        text: data.text,
+        timestamp: data.timestamp,
+        isLocal: false,
+      };
+      setMessages((prev) => [...prev, incoming]);
+    };
+    channel.addEventListener("message", onMessage as EventListener);
+    return () => {
+      channel.removeEventListener("message", onMessage as EventListener);
+      channel.close();
+      channelRef.current = null;
+    };
+  }, [roomId]);
+
+  useEffect(() => {
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
-  }, [allMessages]);
+  }, [messages]);
 
   const handleSendMessage = () => {
     if (!messageText.trim()) return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      username,
-      text: messageText,
-      timestamp: new Date(),
-      isLocal: true,
-    };
-
-    if (onSendMessage) {
-      onSendMessage(messageText);
-    } else {
-      // Demo mode - add message locally
-      setLocalMessages(prev => [...prev, newMessage]);
+    const id = Date.now().toString();
+    const ts = Date.now();
+    const local: Message = { id, username, text: messageText, timestamp: ts, isLocal: true };
+    setMessages((prev) => [...prev, local]);
+    if (channelRef.current) {
+      channelRef.current.postMessage({ type: "chat", id, username, text: messageText, timestamp: ts });
     }
     
     setMessageText("");
@@ -92,8 +81,8 @@ export default function ChatDrawer({ username, onSendMessage, messages = [] }: C
     }
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatTime = (epochMs: number) => {
+    return new Date(epochMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -102,7 +91,7 @@ export default function ChatDrawer({ username, onSendMessage, messages = [] }: C
         <Button
           variant="secondary"
           size="lg"
-          className="rounded-full w-14 h-14 p-0 bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-all duration-200"
+          className="rounded-full w-14 h-14 p-0 bg-black/60 text-white shadow-lg hover:bg-black/80 transition-all duration-200"
         >
           <MessageCircle className="w-6 h-6" />
         </Button>
@@ -126,11 +115,11 @@ export default function ChatDrawer({ username, onSendMessage, messages = [] }: C
           </div>
         </DrawerHeader>
 
-        <div className="flex flex-col h-full p-4">
+        <div className="flex flex-col h-full min-h-0 p-4">
           {/* Messages Area */}
-          <ScrollArea className="flex-1 pr-4" ref={scrollAreaRef}>
+          <div ref={messagesRef} className="flex-1 min-h-0 pr-4 overflow-y-auto">
             <div className="space-y-4 pb-4">
-              {allMessages.map((message) => (
+              {messages.map((message) => (
                 <div
                   key={message.id}
                   className={`flex ${message.isLocal ? 'justify-end' : 'justify-start'} animate-fade-in`}
@@ -167,7 +156,7 @@ export default function ChatDrawer({ username, onSendMessage, messages = [] }: C
                 </div>
               ))}
             </div>
-          </ScrollArea>
+          </div>
 
           {/* Message Input */}
           <div className="flex gap-3 pt-4 border-t border-white/10">

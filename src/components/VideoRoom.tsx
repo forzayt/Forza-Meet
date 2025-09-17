@@ -204,7 +204,7 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
             {isVideoEnabled ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
           </Button>
 
-          <ChatDrawer username={username} />
+          <ChatDrawer username={username} roomId={roomId} />
           
           <Button
             onClick={handleLeaveRoom}
