@@ -89,6 +89,33 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
     return connectionState === "connected" ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />;
   };
 
+  // Build unified tiles array: local first, then remotes
+  const tiles = [
+    {
+      id: "local",
+      stream: localStream as MediaStream | null,
+      name: `You (${username})`,
+      videoEnabled: isVideoEnabled,
+      audioEnabled: isAudioEnabled,
+      isLocal: true,
+    },
+    ...remoteParticipants.map((p) => ({
+      id: p.peerId,
+      stream: p.stream,
+      name: p.username || "Participant",
+      videoEnabled: p.videoEnabled,
+      audioEnabled: p.audioEnabled,
+      isLocal: false,
+    })),
+  ];
+
+  const colsClass = (() => {
+    const n = tiles.length;
+    if (n <= 1) return "grid-cols-1";
+    if (n === 2) return "grid-cols-1 sm:grid-cols-2";
+    return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
+  })();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-primary p-4">
       <div className="max-w-6xl mx-auto">
@@ -115,50 +142,42 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
           </Badge>
         </div>
 
-        {/* Video Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-          {/* Local Video */}
-          <Card className="bg-video-bg border-video-border overflow-hidden">
-            <div className="relative aspect-video">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              {/* Mic status (local) */}
-              <div className="absolute top-3 right-3 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 text-white">
-                {isAudioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-              </div>
-              <div className="absolute bottom-4 left-4">
-                <Badge variant="secondary" className="bg-black/50 text-white border-0">
-                  You ({username})
-                </Badge>
-              </div>
-              {!isVideoEnabled && (
-                <div className="absolute inset-0 bg-video-bg flex items-center justify-center">
-                  <div className="text-center">
-                    <VideoOff className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-muted-foreground">Camera Off</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* Remote Participants */}
-          {remoteParticipants.map((p) => (
-            <Card key={p.peerId} className="bg-video-bg border-video-border overflow-hidden">
+        {/* Video Grid (Google Meet-like behavior) */}
+        <div className={`grid ${colsClass} gap-6 mb-6`}>
+          {tiles.map((t) => (
+            <Card key={t.id} className="bg-video-bg border-video-border overflow-hidden">
               <div className="relative aspect-video">
-                <ParticipantVideo stream={p.stream} videoEnabled={p.videoEnabled} />
-                {/* Mic status (remote) */}
-                <MicStatusOverlay enabled={p.audioEnabled} />
+                {t.isLocal ? (
+                  <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+                ) : (
+                  <ParticipantVideo stream={t.stream} videoEnabled={t.videoEnabled} />
+                )}
+                {/* Mic status */}
+                <MicStatusOverlay enabled={t.audioEnabled} />
                 <div className="absolute bottom-4 left-4">
                   <Badge variant="secondary" className="bg-black/50 text-white border-0">
-                    {p.username || "Participant"}
+                    {t.name}
                   </Badge>
                 </div>
+                {t.isLocal ? (
+                  !isVideoEnabled && (
+                    <div className="absolute inset-0 bg-video-bg flex items-center justify-center">
+                      <div className="text-center">
+                        <VideoOff className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-muted-foreground">Camera Off</p>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  t.videoEnabled === false && (
+                    <div className="absolute inset-0 bg-video-bg flex items-center justify-center">
+                      <div className="text-center">
+                        <VideoOff className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-muted-foreground">Camera Off</p>
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             </Card>
           ))}
