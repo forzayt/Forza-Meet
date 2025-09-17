@@ -118,7 +118,7 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
   })();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-primary p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">

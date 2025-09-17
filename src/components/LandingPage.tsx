@@ -89,7 +89,7 @@ export default function LandingPage({ onJoinRoom }: LandingPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary via-accent to-primary flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
       {/* Top-right GitHub link */}
       <a
         href="https://github.com/forzayt/Forza-Meet"

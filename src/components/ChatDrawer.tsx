@@ -126,8 +126,8 @@ export default function ChatDrawer({ username, roomId }: ChatDrawerProps) {
         </Button>
       </DrawerTrigger>
       
-      <DrawerContent className="h-[85vh] bg-gradient-to-br from-primary/95 via-accent/95 to-primary/95 backdrop-blur-xl border-white/20">
-        <DrawerHeader className="border-b border-white/10 bg-white/5">
+      <DrawerContent className="h-[85vh] bg-gradient-to-br from-gray-900/90 via-gray-800/90 to-gray-900/90 backdrop-blur-xl border-white/20">
+        <DrawerHeader className="border-b border-white/10 bg-gray-800/50">
           
           <div className="mt-2 flex items-center justify-center">
             <p className="text-xs text-white/60">Drag down to close</p>
