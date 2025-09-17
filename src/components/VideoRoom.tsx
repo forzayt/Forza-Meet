@@ -140,11 +140,11 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
 
   const getGridClass = () => {
     const n = tiles.length;
-    if (n <= 1) return "grid-cols-1 max-w-sm mx-auto";  // <-- Even smaller
-    if (n === 2) return "grid-cols-1 lg:grid-cols-2";
-    if (n <= 4) return "grid-cols-1 sm:grid-cols-2";
-    if (n <= 6) return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
-    return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
+    if (n <= 1) return "grid-cols-1 max-w-sm mx-auto";
+    if (n === 2) return "grid-cols-1 sm:grid-cols-2";
+    if (n === 3) return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3";
+    // 4 or more → allow up to 4 per row on large screens
+    return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
   };
 
   return (
@@ -203,7 +203,7 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
         </div>
 
         {/* Video Grid */}
-        <div className={`grid ${getGridClass()} gap-4 mb-6 transition-all duration-500 ease-out`}>
+        <div className={`grid ${getGridClass()} gap-3 mb-6 transition-all duration-500 ease-out`}>
           {tiles.map((tile, index) => (
             <Card 
               key={tile.id} 
