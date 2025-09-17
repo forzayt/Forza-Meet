@@ -8,7 +8,9 @@ type SignalMessage =
   | { type: "offer"; senderId: string; targetId: string; sdp: RTCSessionDescriptionInit; username: string }
   | { type: "answer"; senderId: string; targetId: string; sdp: RTCSessionDescriptionInit }
   | { type: "ice-candidate"; senderId: string; targetId: string; candidate: RTCIceCandidateInit }
-  | { type: "state"; senderId: string; audioEnabled: boolean; videoEnabled: boolean };
+  | { type: "state"; senderId: string; audioEnabled: boolean; videoEnabled: boolean }
+  | { type: "presence-request"; senderId: string }
+  | { type: "presence-response"; senderId: string; username: string };
 
 interface RemoteParticipant {
   peerId: string;
@@ -128,6 +130,11 @@ export function useWebRTC(username: string, roomId: string) {
         if (!msg || ("senderId" in msg && msg.senderId === clientId)) return;
 
         switch (msg.type) {
+          case "presence-request": {
+            // Reply that we are present in this room
+            channel.postMessage({ type: "presence-response", senderId: clientId, username } as SignalMessage);
+            break;
+          }
           case "join": {
             // A new peer joined: create offer to them
             remoteNamesRef.current.set(msg.senderId, msg.username);

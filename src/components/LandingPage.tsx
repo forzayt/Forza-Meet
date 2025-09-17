@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Video, Users, ArrowRight } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface LandingPageProps {
   onJoinRoom: (username: string, roomId: string, isCreator: boolean) => void;
@@ -14,6 +15,41 @@ export default function LandingPage({ onJoinRoom }: LandingPageProps) {
   const [roomId, setRoomId] = useState("");
   const [mode, setMode] = useState<"select" | "create" | "join">("select");
   const [createdRoomId, setCreatedRoomId] = useState("");
+  const { toast } = useToast();
+  const pendingPresenceTimeoutRef = useRef<number | null>(null);
+
+  const checkRoomPresence = async (room: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      let resolved = false;
+      const channel = new BroadcastChannel(`forza-meet:${room}`);
+      const onMessage = (event: MessageEvent) => {
+        const data = event.data as any;
+        if (data && data.type === "presence-response") {
+          resolved = true;
+          cleanup();
+          resolve(true);
+        }
+      };
+      const cleanup = () => {
+        channel.removeEventListener("message", onMessage as EventListener);
+        channel.close();
+        if (pendingPresenceTimeoutRef.current) {
+          window.clearTimeout(pendingPresenceTimeoutRef.current);
+          pendingPresenceTimeoutRef.current = null;
+        }
+      };
+      channel.addEventListener("message", onMessage as EventListener);
+      // Ask if anyone is present in this room
+      channel.postMessage({ type: "presence-request", senderId: "landing" });
+      // Timeout after 800ms if nobody responds
+      pendingPresenceTimeoutRef.current = window.setTimeout(() => {
+        if (!resolved) {
+          cleanup();
+          resolve(false);
+        }
+      }, 800);
+    });
+  };
 
   const generateRoomId = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -32,7 +68,14 @@ export default function LandingPage({ onJoinRoom }: LandingPageProps) {
 
   const handleJoinRoom = () => {
     if (!username.trim() || !roomId.trim()) return;
-    onJoinRoom(username, roomId, false);
+    // Validate room presence before joining
+    checkRoomPresence(roomId).then((present) => {
+      if (!present) {
+        toast({ title: "Room not found", description: "Please check the Room ID and try again.", variant: "destructive" as any });
+        return;
+      }
+      onJoinRoom(username, roomId, false);
+    });
   };
 
   const copyRoomId = async () => {
