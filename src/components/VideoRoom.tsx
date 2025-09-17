@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Mic, 
   MicOff, 
@@ -26,6 +27,7 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const { toast } = useToast();
 
   const {
     localStream,
@@ -52,8 +54,10 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
   const copyRoomId = async () => {
     try {
       await navigator.clipboard.writeText(roomId);
+      toast({ title: "Copied", description: "Room ID copied to clipboard." });
     } catch (err) {
       console.error("Failed to copy room ID:", err);
+      toast({ title: "Copy failed", description: "Could not copy Room ID.", variant: "destructive" as any });
     }
   };
 
@@ -184,13 +188,7 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
           </Button>
         </div>
 
-        {/* Connection Status */}
-        {remoteParticipants.length === 0 && connectionState !== "connected" && (
-          <Card className="bg-white/10 backdrop-blur border-white/20 text-white p-4 text-center">
-            <h3 className="font-semibold mb-2">Setting up connection...</h3>
-            <p className="text-sm text-white/70">Share the Room ID to invite others</p>
-          </Card>
-        )}
+        {/* Connection Status removed as requested */}
       </div>
     </div>
   );
