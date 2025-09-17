@@ -93,8 +93,8 @@ export default function LandingPage({ onJoinRoom }: LandingPageProps) {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 backdrop-blur rounded-2xl mb-4">
             <Video className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">VideoConnect</h1>
-          <p className="text-white/80">Secure peer-to-peer video calls</p>
+          <h1 className="text-3xl font-bold text-white mb-2">FORZA MEET</h1>
+          <p className="text-white/80">Unlimited video meetings </p>
         </div>
 
         <Card className="bg-white/10 backdrop-blur border-white/20 text-white">
