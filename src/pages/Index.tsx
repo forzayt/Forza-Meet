@@ -1,14 +1,37 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import LandingPage from "@/components/LandingPage";
+import VideoRoom from "@/components/VideoRoom";
 
 const Index = () => {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
-  );
+  const [currentView, setCurrentView] = useState<"landing" | "room">("landing");
+  const [roomData, setRoomData] = useState<{
+    username: string;
+    roomId: string;
+    isCreator: boolean;
+  } | null>(null);
+
+  const handleJoinRoom = (username: string, roomId: string, isCreator: boolean) => {
+    setRoomData({ username, roomId, isCreator });
+    setCurrentView("room");
+  };
+
+  const handleLeaveRoom = () => {
+    setRoomData(null);
+    setCurrentView("landing");
+  };
+
+  if (currentView === "room" && roomData) {
+    return (
+      <VideoRoom
+        username={roomData.username}
+        roomId={roomData.roomId}
+        isCreator={roomData.isCreator}
+        onLeaveRoom={handleLeaveRoom}
+      />
+    );
+  }
+
+  return <LandingPage onJoinRoom={handleJoinRoom} />;
 };
 
 export default Index;
