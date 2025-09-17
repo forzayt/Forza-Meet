@@ -15,6 +15,7 @@ import {
   WifiOff
 } from "lucide-react";
 import { useWebRTC } from "@/hooks/useWebRTC";
+import ChatDrawer from "./ChatDrawer";
 
 interface VideoRoomProps {
   username: string;
@@ -202,6 +203,8 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
           >
             {isVideoEnabled ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
           </Button>
+
+          <ChatDrawer username={username} />
           
           <Button
             onClick={handleLeaveRoom}
