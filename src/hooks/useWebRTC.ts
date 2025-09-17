@@ -30,6 +30,7 @@ export function useWebRTC(username: string, roomId: string) {
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const remoteNamesRef = useRef<Map<string, string>>(new Map());
+  const peerDisconnectTimersRef = useRef<Map<string, number>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const localAudioEnabledRef = useRef<boolean>(true);
   const localVideoEnabledRef = useRef<boolean>(true);
@@ -44,6 +45,19 @@ export function useWebRTC(username: string, roomId: string) {
     ],
     iceCandidatePoolSize: 10,
   };
+
+  const cleanupPeer = useCallback((peerId: string) => {
+    const pc = peersRef.current.get(peerId);
+    if (pc) pc.close();
+    peersRef.current.delete(peerId);
+    const stream = remoteStreamsRef.current.get(peerId);
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+    }
+    remoteStreamsRef.current.delete(peerId);
+    remoteNamesRef.current.delete(peerId);
+    setRemoteParticipants((prev) => prev.filter((p) => p.peerId !== peerId));
+  }, []);
 
   const createPeerConnection = useCallback((peerId: string) => {
     const pc = new RTCPeerConnection(configuration);
@@ -73,6 +87,23 @@ export function useWebRTC(username: string, roomId: string) {
             : [...prev, { peerId, username: name, stream, audioEnabled: true, videoEnabled: true }];
           return updated;
         });
+
+        // Remove participant if their stream goes inactive (e.g., tab closed abruptly)
+        const handleInactive = () => cleanupPeer(peerId);
+        // @ts-ignore - oninactive exists on MediaStream in browsers
+        if (typeof (stream as any).oninactive !== "undefined") {
+          (stream as any).oninactive = handleInactive;
+        } else {
+          // Fallback: listen for all tracks ended
+          const maybeCleanup = () => {
+            if (stream.getTracks().every((t) => t.readyState === "ended")) {
+              cleanupPeer(peerId);
+            }
+          };
+          stream.getTracks().forEach((t) => {
+            t.addEventListener("ended", maybeCleanup);
+          });
+        }
       }
     };
 
@@ -81,6 +112,31 @@ export function useWebRTC(username: string, roomId: string) {
       if (states.some((s) => s === "connected")) setConnectionState("connected");
       else if (states.some((s) => s === "connecting" || s === "new")) setConnectionState("connecting");
       else setConnectionState("disconnected");
+
+      // Per-peer cleanup logic
+      const state = pc.connectionState;
+      if (state === "failed" || state === "closed") {
+        cleanupPeer(peerId);
+      } else if (state === "disconnected") {
+        // Grace period to allow quick reconnects
+        const existing = peerDisconnectTimersRef.current.get(peerId);
+        if (existing) window.clearTimeout(existing);
+        const timer = window.setTimeout(() => {
+          // If still disconnected, cleanup
+          const current = peersRef.current.get(peerId);
+          if (!current || current.connectionState !== "connected") {
+            cleanupPeer(peerId);
+          }
+          peerDisconnectTimersRef.current.delete(peerId);
+        }, 3000);
+        peerDisconnectTimersRef.current.set(peerId, timer);
+      } else if (state === "connected") {
+        const existing = peerDisconnectTimersRef.current.get(peerId);
+        if (existing) {
+          window.clearTimeout(existing);
+          peerDisconnectTimersRef.current.delete(peerId);
+        }
+      }
     };
 
     // Add local tracks to this connection
@@ -298,6 +354,19 @@ export function useWebRTC(username: string, roomId: string) {
     setConnectionState("disconnected");
     remoteStreamsRef.current.clear();
     remoteNamesRef.current.clear();
+  }, [clientId]);
+
+  // Ensure we broadcast leave on tab close/reload to help peers cleanup tiles
+  useEffect(() => {
+    const handler = () => {
+      try {
+        if (channelRef.current) {
+          channelRef.current.postMessage({ type: "leave", senderId: clientId } as SignalMessage);
+        }
+      } catch {}
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
   }, [clientId]);
 
   // Cleanup on unmount
