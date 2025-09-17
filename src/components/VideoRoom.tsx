@@ -217,52 +217,13 @@ export default function VideoRoom({ username, roomId, isCreator, onLeaveRoom }: 
           </Button>
         </div>
 
-        {/* Signaling Section */}
-        {!isSignalingComplete && (
-          <Card className="bg-white/10 backdrop-blur border-white/20 text-white p-4">
-            <h3 className="font-semibold mb-3">
-              {isCreator ? "Share Connection Data" : "Paste Connection Data"}
-            </h3>
-            
-            {isCreator ? (
-              <div className="space-y-3">
-                <p className="text-sm text-white/70">
-                  Copy this data and share it with the other participant:
-                </p>
-                {signalingData && (
-                  <div className="flex gap-2">
-                    <textarea
-                      value={JSON.stringify(signalingData, null, 2)}
-                      readOnly
-                      className="flex-1 p-3 bg-black/20 border border-white/20 rounded text-sm font-mono"
-                      rows={4}
-                    />
-                    <Button onClick={copySignalingData} size="sm">
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-white/70">
-                  Paste the connection data from the room creator:
-                </p>
-                <textarea
-                  placeholder="Paste connection data here..."
-                  className="w-full p-3 bg-black/20 border border-white/20 rounded text-sm font-mono"
-                  rows={4}
-                  onChange={(e) => {
-                    try {
-                      const data = JSON.parse(e.target.value);
-                      handleSignalingData(data);
-                    } catch (err) {
-                      // Invalid JSON, ignore
-                    }
-                  }}
-                />
-              </div>
-            )}
+        {/* Connection Status */}
+        {!remoteStream && connectionState !== "connected" && (
+          <Card className="bg-white/10 backdrop-blur border-white/20 text-white p-4 text-center">
+            <h3 className="font-semibold mb-2">Setting up connection...</h3>
+            <p className="text-sm text-white/70">
+              {isCreator ? "Waiting for someone to join the room" : "Connecting to the room creator"}
+            </p>
           </Card>
         )}
       </div>

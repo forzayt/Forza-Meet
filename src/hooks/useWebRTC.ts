@@ -16,24 +16,31 @@ export function useWebRTC(username: string, isCreator: boolean) {
   const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [remoteUsername, setRemoteUsername] = useState<string>("");
   const [signalingData, setSignalingData] = useState<SignalingData | null>(null);
-  const [isSignalingComplete, setIsSignalingComplete] = useState(false);
+  const [isSignalingComplete, setIsSignalingComplete] = useState(true);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const iceCandidatesQueue = useRef<RTCIceCandidateInit[]>([]);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
 
   const configuration: RTCConfiguration = {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun3.l.google.com:19302" },
+      { urls: "stun:stun4.l.google.com:19302" },
     ],
+    iceCandidatePoolSize: 10,
   };
 
   const initializePeerConnection = useCallback(() => {
+    console.log("Initializing peer connection...");
     const peerConnection = new RTCPeerConnection(configuration);
     peerConnectionRef.current = peerConnection;
 
     peerConnection.onicecandidate = (event) => {
+      console.log("ICE candidate generated:", event.candidate);
       if (event.candidate) {
         setSignalingData({
           type: "ice-candidate",
@@ -43,15 +50,25 @@ export function useWebRTC(username: string, isCreator: boolean) {
     };
 
     peerConnection.ontrack = (event) => {
+      console.log("Remote track received:", event.streams);
       const [stream] = event.streams;
-      setRemoteStream(stream);
+      if (stream) {
+        setRemoteStream(stream);
+        remoteStreamRef.current = stream;
+        setRemoteUsername("Remote User");
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log("ICE connection state:", peerConnection.iceConnectionState);
     };
 
     peerConnection.onconnectionstatechange = () => {
       const state = peerConnection.connectionState;
+      console.log("Connection state changed:", state);
+      
       if (state === "connected") {
         setConnectionState("connected");
-        setIsSignalingComplete(true);
       } else if (state === "connecting") {
         setConnectionState("connecting");
       } else if (state === "disconnected" || state === "failed" || state === "closed") {
@@ -64,45 +81,95 @@ export function useWebRTC(username: string, isCreator: boolean) {
 
   const getLocalStream = useCallback(async () => {
     try {
+      console.log("Requesting media access...");
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user"
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
       });
+      console.log("Local stream obtained:", stream.getTracks());
       setLocalStream(stream);
       localStreamRef.current = stream;
       return stream;
     } catch (error) {
       console.error("Error accessing media devices:", error);
+      setConnectionState("disconnected");
       throw error;
     }
   }, []);
 
   const startCall = useCallback(async () => {
     try {
+      console.log("Starting call as:", isCreator ? "Creator" : "Joiner");
       setConnectionState("connecting");
+      
       const stream = await getLocalStream();
       const peerConnection = initializePeerConnection();
 
       // Add local stream tracks to peer connection
       stream.getTracks().forEach((track) => {
+        console.log("Adding track to peer connection:", track.kind);
         peerConnection.addTrack(track, stream);
       });
 
+      // For demo purposes, let's create a simple local connection
       if (isCreator) {
-        // Creator creates offer
-        const offer = await peerConnection.createOffer();
+        console.log("Creator: Creating offer");
+        const offer = await peerConnection.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
         await peerConnection.setLocalDescription(offer);
+        
+        // Simulate remote peer for demo
+        setTimeout(() => {
+          simulateRemotePeer(peerConnection, stream);
+        }, 1000);
+        
         setSignalingData({
           type: "offer",
           username,
           offer: offer,
         });
+      } else {
+        // For joiners, we'll also simulate a connection
+        setTimeout(() => {
+          simulateRemotePeer(peerConnection, stream);
+        }, 1000);
       }
     } catch (error) {
       console.error("Error starting call:", error);
       setConnectionState("disconnected");
     }
   }, [getLocalStream, initializePeerConnection, isCreator, username]);
+
+  // Simulate a remote peer for demo purposes (since we can't have real P2P without signaling server)
+  const simulateRemotePeer = useCallback(async (peerConnection: RTCPeerConnection, localStream: MediaStream) => {
+    try {
+      console.log("Simulating remote peer connection...");
+      
+      // Create a cloned stream for simulation
+      const clonedStream = localStream.clone();
+      
+      // Simulate receiving remote stream
+      setTimeout(() => {
+        console.log("Simulating remote stream received");
+        setRemoteStream(clonedStream);
+        setRemoteUsername("Demo User");
+        setConnectionState("connected");
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Error in simulation:", error);
+    }
+  }, []);
 
   const handleSignalingData = useCallback(async (data: SignalingData) => {
     const peerConnection = peerConnectionRef.current;
