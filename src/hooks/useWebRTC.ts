@@ -7,12 +7,15 @@ type SignalMessage =
   | { type: "leave"; senderId: string }
   | { type: "offer"; senderId: string; targetId: string; sdp: RTCSessionDescriptionInit; username: string }
   | { type: "answer"; senderId: string; targetId: string; sdp: RTCSessionDescriptionInit }
-  | { type: "ice-candidate"; senderId: string; targetId: string; candidate: RTCIceCandidateInit };
+  | { type: "ice-candidate"; senderId: string; targetId: string; candidate: RTCIceCandidateInit }
+  | { type: "state"; senderId: string; audioEnabled: boolean; videoEnabled: boolean };
 
 interface RemoteParticipant {
   peerId: string;
   username: string;
   stream: MediaStream | null;
+  audioEnabled: boolean;
+  videoEnabled: boolean;
 }
 
 export function useWebRTC(username: string, roomId: string) {
@@ -26,6 +29,8 @@ export function useWebRTC(username: string, roomId: string) {
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const remoteNamesRef = useRef<Map<string, string>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+  const localAudioEnabledRef = useRef<boolean>(true);
+  const localVideoEnabledRef = useRef<boolean>(true);
 
   const configuration: RTCConfiguration = {
     iceServers: [
@@ -63,7 +68,7 @@ export function useWebRTC(username: string, roomId: string) {
           const exists = prev.some((p) => p.peerId === peerId);
           const updated = exists
             ? prev.map((p) => (p.peerId === peerId ? { ...p, stream } : p))
-            : [...prev, { peerId, username: name, stream }];
+            : [...prev, { peerId, username: name, stream, audioEnabled: true, videoEnabled: true }];
           return updated;
         });
       }
@@ -128,12 +133,23 @@ export function useWebRTC(username: string, roomId: string) {
             remoteNamesRef.current.set(msg.senderId, msg.username);
             setRemoteParticipants((prev) => {
               if (prev.some((p) => p.peerId === msg.senderId)) return prev;
-              return [...prev, { peerId: msg.senderId, username: msg.username, stream: remoteStreamsRef.current.get(msg.senderId) || null }];
+              return [
+                ...prev,
+                {
+                  peerId: msg.senderId,
+                  username: msg.username,
+                  stream: remoteStreamsRef.current.get(msg.senderId) || null,
+                  audioEnabled: true,
+                  videoEnabled: true,
+                },
+              ];
             });
             const pc = createPeerConnection(msg.senderId);
             const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
             await pc.setLocalDescription(offer);
             channel.postMessage({ type: "offer", senderId: clientId, targetId: msg.senderId, sdp: offer, username } as SignalMessage);
+            // Send our current state
+            channel.postMessage({ type: "state", senderId: clientId, audioEnabled: localAudioEnabledRef.current, videoEnabled: localVideoEnabledRef.current } as SignalMessage);
             break;
           }
           case "offer": {
@@ -141,13 +157,24 @@ export function useWebRTC(username: string, roomId: string) {
             remoteNamesRef.current.set(msg.senderId, msg.username);
             setRemoteParticipants((prev) => {
               if (prev.some((p) => p.peerId === msg.senderId)) return prev;
-              return [...prev, { peerId: msg.senderId, username: msg.username, stream: remoteStreamsRef.current.get(msg.senderId) || null }];
+              return [
+                ...prev,
+                {
+                  peerId: msg.senderId,
+                  username: msg.username,
+                  stream: remoteStreamsRef.current.get(msg.senderId) || null,
+                  audioEnabled: true,
+                  videoEnabled: true,
+                },
+              ];
             });
             const pc = createPeerConnection(msg.senderId);
             await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             channel.postMessage({ type: "answer", senderId: clientId, targetId: msg.senderId, sdp: answer } as SignalMessage);
+            // Send our current state
+            channel.postMessage({ type: "state", senderId: clientId, audioEnabled: localAudioEnabledRef.current, videoEnabled: localVideoEnabledRef.current } as SignalMessage);
             break;
           }
           case "answer": {
@@ -170,6 +197,12 @@ export function useWebRTC(username: string, roomId: string) {
             }
             break;
           }
+          case "state": {
+            setRemoteParticipants((prev) =>
+              prev.map((p) => (p.peerId === msg.senderId ? { ...p, audioEnabled: msg.audioEnabled, videoEnabled: msg.videoEnabled } : p)),
+            );
+            break;
+          }
           case "leave": {
             const pc = peersRef.current.get(msg.senderId);
             if (pc) pc.close();
@@ -186,6 +219,8 @@ export function useWebRTC(username: string, roomId: string) {
 
       // Announce presence
       channel.postMessage({ type: "join", senderId: clientId, username } as SignalMessage);
+      // Also immediately publish our current state
+      channel.postMessage({ type: "state", senderId: clientId, audioEnabled: localAudioEnabledRef.current, videoEnabled: localVideoEnabledRef.current } as SignalMessage);
 
       // Cleanup listener on unmount/leave handled in hangUp
     } catch (error) {
@@ -201,6 +236,15 @@ export function useWebRTC(username: string, roomId: string) {
       const audioTrack = localStreamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
+        localAudioEnabledRef.current = audioTrack.enabled;
+        if (channelRef.current) {
+          channelRef.current.postMessage({
+            type: "state",
+            senderId: clientId,
+            audioEnabled: localAudioEnabledRef.current,
+            videoEnabled: localVideoEnabledRef.current,
+          } as SignalMessage);
+        }
       }
     }
   }, []);
@@ -210,6 +254,15 @@ export function useWebRTC(username: string, roomId: string) {
       const videoTrack = localStreamRef.current.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
+        localVideoEnabledRef.current = videoTrack.enabled;
+        if (channelRef.current) {
+          channelRef.current.postMessage({
+            type: "state",
+            senderId: clientId,
+            audioEnabled: localAudioEnabledRef.current,
+            videoEnabled: localVideoEnabledRef.current,
+          } as SignalMessage);
+        }
       }
     }
   }, []);

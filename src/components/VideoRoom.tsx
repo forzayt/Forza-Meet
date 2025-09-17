@@ -127,6 +127,10 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
                 playsInline
                 className="w-full h-full object-cover"
               />
+              {/* Mic status (local) */}
+              <div className="absolute top-3 right-3 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 text-white">
+                {isAudioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+              </div>
               <div className="absolute bottom-4 left-4">
                 <Badge variant="secondary" className="bg-black/50 text-white border-0">
                   You ({username})
@@ -148,6 +152,8 @@ export default function VideoRoom({ username, roomId, onLeaveRoom }: VideoRoomPr
             <Card key={p.peerId} className="bg-video-bg border-video-border overflow-hidden">
               <div className="relative aspect-video">
                 <ParticipantVideo stream={p.stream} />
+                {/* Mic status (remote) */}
+                <MicStatusOverlay enabled={p.audioEnabled} />
                 <div className="absolute bottom-4 left-4">
                   <Badge variant="secondary" className="bg-black/50 text-white border-0">
                     {p.username || "Participant"}
@@ -202,4 +208,13 @@ function ParticipantVideo({ stream }: { stream: MediaStream | null }) {
     }
   }, [stream]);
   return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover" />;
+}
+
+function MicStatusOverlay({ enabled }: { enabled: boolean }) {
+  const isOn = enabled;
+  return (
+    <div className="absolute top-3 right-3 flex items-center justify-center w-7 h-7 rounded-full bg-black/50 text-white">
+      {isOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+    </div>
+  );
 }
